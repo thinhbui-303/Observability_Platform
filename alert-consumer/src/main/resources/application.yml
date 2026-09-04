@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: alert-consumer
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/observability
+    username: ${POSTGRES_USER:obs_user}
+    password: ${POSTGRES_PASSWORD:obs_password}
+  flyway:
+    enabled: false

@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: indexer-worker
+  flyway:
+    enabled: false

@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: notification-dispatcher
+  flyway:
+    enabled: false
