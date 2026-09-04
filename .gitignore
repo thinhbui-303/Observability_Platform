@@ -34,3 +34,9 @@ build/
 ### Custom ###
 *.log
 .env
+
+### OS and Office Temp Files ###
+~$*
+*.tmp
+.DS_Store
+Thumbs.db
