@@ -1,0 +1,5 @@
+spring:
+  kafka:
+    consumer:
+      auto-offset-reset: latest
+      group-id: alert-persistence-test-${random.uuid}

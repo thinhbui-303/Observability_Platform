@@ -30,7 +30,7 @@ public class SystemAlertConsumer {
 
     // LLD 10.2: offset ACK'd only AFTER the local Postgres transaction commits.
     // persist() throws on real failures -> this method throws -> record is NOT acked -> redelivery (at-least-once).
-    @KafkaListener(topics = "system-alerts", groupId = "alert-persistence-group",
+    @KafkaListener(topics = "system-alerts", groupId = "${spring.kafka.consumer.group-id:alert-persistence-group}",
                    containerFactory = "alertKafkaListenerContainerFactory")
     public void onAlert(ConsumerRecord<String, String> record, Acknowledgment acknowledgment) throws Exception {
         CanonicalAlertEvent event = JSON.readValue(record.value(), CanonicalAlertEvent.class);
