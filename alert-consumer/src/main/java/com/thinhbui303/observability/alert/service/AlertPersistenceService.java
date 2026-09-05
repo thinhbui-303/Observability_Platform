@@ -17,6 +17,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Timestamp;
+import java.time.Instant;
 
 @Service
 public class AlertPersistenceService {
@@ -41,6 +42,11 @@ public class AlertPersistenceService {
     private static final String INCREMENT_OCCURRENCE =
             "UPDATE alerts SET occurrence_count = occurrence_count + 1 " +
             "WHERE rule_id = ? AND service_id = ? AND environment = ? AND window_start = ?";
+
+    // JdbcTemplate's positional-arg binder cannot infer an SQL type for java.time.Instant.
+    private static Timestamp toTimestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
+    }
 
     private final JdbcTemplate jdbcTemplate;
     private final AlertMapper mapper;
@@ -67,7 +73,8 @@ public class AlertPersistenceService {
                         a.getId(), a.getRuleId(), a.getServiceId(), a.getEnvironment(),
                         Timestamp.from(a.getWindowStart()),
                         a.getSeverity(), a.getStatus(), Timestamp.from(a.getTriggeredAt()),
-                        a.getAcknowledgedAt(), a.getResolvedAt(), a.getOccurrenceCount());
+                        toTimestamp(a.getAcknowledgedAt()), toTimestamp(a.getResolvedAt()),
+                        a.getOccurrenceCount());
             } catch (DuplicateKeyException ex) {
                 // Business-key duplicate (different alertId, same business key): the INSERT raised
                 // unique_violation because the conflict was NOT on the (id) arbiter. PostgreSQL

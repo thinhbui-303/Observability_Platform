@@ -102,10 +102,16 @@ public class AlertConsumerIntegrationTest {
 
         publish(event);
 
-        await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
+        // Awaitility.untilAsserted returns at the FIRST passing poll, so it cannot prove the
+        // duplicate was consumed WITHOUT mutating anything. Dwell instead: hold the invariant
+        // ((1 row, occurrence_count 1) it for a fixed window that comfortably exceeds the observed
+        // consumption latency (~230ms) so a late duplicate is caught on ANY violation.
+        long deadline = System.currentTimeMillis() + 3000;
+        while (System.currentTimeMillis() < deadline) {
             assertThat(countOf(alertId)).isEqualTo(1);
             assertThat(occurrenceCountOf(alertId)).isEqualTo(1);
-        });
+            Thread.sleep(100);
+        }
     }
 
     @Test
