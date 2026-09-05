@@ -1,5 +1,17 @@
 spring:
   application:
     name: notification-dispatcher
-  flyway:
-    enabled: false
+  datasource:
+    url: jdbc:postgresql://localhost:5432/observability
+    username: obs_user
+    password: obs_password
+  kafka:
+    bootstrap-servers: localhost:9092
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
