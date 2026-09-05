@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/observability
+    username: obs_user
+    password: obs_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  elasticsearch:
+    uris: http://localhost:9200 # Will be overridden in tests if using Testcontainers, or use local
+
+jwt:
+  secret: a-very-long-secret-key-for-testing-purposes-only-1234567890
+  expiration-ms: 3600000

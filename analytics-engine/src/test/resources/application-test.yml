@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/observability
+    username: obs_user
+    password: obs_password
+    driver-class-name: org.postgresql.Driver
+  kafka:
+    bootstrap-servers: localhost:9092
+
+analytics:
+  rule:
+    cache:
+      refresh-rate: 2000

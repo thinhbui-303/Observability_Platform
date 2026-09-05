@@ -1,5 +1,14 @@
 spring:
   application:
     name: indexer-worker
-  flyway:
-    enabled: false
+  
+  kafka:
+    bootstrap-servers: localhost:9092
+    
+  elasticsearch:
+    uris: http://localhost:9200
+    
+logging:
+  level:
+    com.thinhbui303.observability: DEBUG
+    org.springframework.kafka: INFO

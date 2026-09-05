@@ -17,5 +17,6 @@ public record CanonicalAlertEvent(
         Instant triggeredAt,
         Instant acknowledgedAt,
         Instant resolvedAt,
+        String triggerLogId,
         List<String> notificationChannels
 ) {}

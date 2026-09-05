@@ -1,0 +1,16 @@
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  datasource:
+    url: jdbc:postgresql://localhost:5432/observability
+    username: obs_user
+    password: obs_password
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+analytics:
+  rule:
+    cache:
+      refresh-rate: 2000
