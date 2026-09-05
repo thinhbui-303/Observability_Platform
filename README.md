@@ -64,3 +64,31 @@ FROM information_schema.tables
 WHERE table_schema = 'public';
 ```
 *Yêu cầu*: Phải hiển thị các bảng: `users`, `roles`, `user_roles`, `services`, `service_api_keys`, `alert_rules`, `alert_rule_channels`, `alerts`, `audit_logs` và `flyway_schema_history`.
+
+---
+
+## Slice 4: Alerting Pipeline (alert-consumer + notification-dispatcher)
+
+Topic `system-alerts` feed hai consumer độc lập trong hai module riêng:
+- **`alert-consumer`** (group `alert-persistence-group`): Persist mỗi alert xuống PostgreSQL theo cách idempotent.
+- **`notification-dispatcher`** (group `notification-dispatch-group`): Gửi thông báo theo cấu hình `alert_rule_channels` (hỗ trợ SLACK / TELEGRAM / WEBHOOK; WEBSOCKET deferred). Dùng Redis cooldown window 300s theo `(service, environment, rule)` để tránh spam.
+
+### Quyết định Business-key Dedup
+
+Bảng `alerts` coi `(rule_id, service_id, environment, window_start)` là **một business alert duy nhất** (`uq_alerts_business_key` trong `V4__create_alerts.sql`).
+- Emit trùng với `alertId` mới → tăng `occurrence_count + 1` trên row hiện có.
+- Emit trùng exact `alertId` → idempotent skip.
+
+Slice 4 **không cần thêm migration mới** (V1–V7 vẫn đầy đủ).
+
+### Lưu ý Mock Webhook trong Tests
+
+Các test dùng `MockRestServiceServer` (spring-test) để mock webhook client. **Không có token Slack/Telegram thật hay gọi HTTP thực** trong test. Ở production, cột `target` chứa webhook URL thật.
+
+### Kiểm tra Regression
+
+Toàn bộ reactor phải pass khi chạy:
+```bash
+mvn clean test -o
+```
+*Yêu cầu*: `BUILD SUCCESS`. Lưu ý integration tests cần docker-compose infra đang chạy (`obs_postgres`, `obs_kafka`, `obs_redis`, `obs_elasticsearch`).
