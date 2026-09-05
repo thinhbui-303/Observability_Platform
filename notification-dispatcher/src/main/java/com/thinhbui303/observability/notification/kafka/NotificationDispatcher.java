@@ -65,7 +65,14 @@ public class NotificationDispatcher {
             if (shouldSend) {
                 List<ChannelConfig> failed = sender.sendAll(event, targets);
                 if (!failed.isEmpty()) {
-                    cooldown.release(event); // send failed -> release cooldown so retry possible
+                    try {
+                        cooldown.release(event); // send failed -> release cooldown so retry possible
+                    } catch (DataAccessException releaseEx) {
+                        // Redis down at the same time as the send failure: do not poison the
+                        // record; release is best-effort and Redis will be retried on redelivery.
+                        log.warn("Could not release cooldown after send failure for alert {}: {}",
+                                event.alertId(), releaseEx.getMessage());
+                    }
                 }
                 // success -> keep cooldown key (nothing to do)
             } else {
