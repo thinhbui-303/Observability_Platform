@@ -128,6 +128,8 @@ public class NotificationDispatcherIntegrationTest {
         server.expect(requestTo("http://mock.local/1")).andRespond(withServerError());
         publish(newAlert("test-notif-alertA-" + UUID.randomUUID()));
         await().atMost(20, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(counterValue()).isEqualTo(1L));
+        await().atMost(20, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertThat(cooldownExists()).isFalse());
         Thread.sleep(300);
         server.verify();
