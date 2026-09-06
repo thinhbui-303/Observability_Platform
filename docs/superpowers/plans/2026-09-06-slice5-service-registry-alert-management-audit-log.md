@@ -51,7 +51,8 @@
 
 **Created (platform-common):**
 - `platform-common/src/main/java/com/thinhbui303/observability/common/ApiKeyHashUtil.java` — static `hash(String): String`, SHA-256/UTF-8/hex-lowercase.
-- `platform-common/src/main/java/com/thinhbui303/observability/common/AlertColumnContract.java` — `AlertColumn` record + `ALERTS` list (name, PG `data_type`, nullable).
+- `platform-common/src/main/java/com/thinhbui303/observability/common/AlertColumn.java` — `public record AlertColumn(String name, String pgType, boolean nullable)` (own file: Java requires one public top-level type per file; Task 2 contract tests import this type cross-package).
+- `platform-common/src/main/java/com/thinhbui303/observability/common/AlertColumnContract.java` — `public final class` holding `ALERTS` (name, PG `data_type`, nullable).
 - `platform-common/src/test/java/com/thinhbui303/observability/common/ApiKeyHashUtilTest.java` — golden vectors.
 
 **Created (core-app main):**
@@ -246,15 +247,23 @@ void testDisabledService_ShouldRejectIngestion() throws Exception {
 
 `assertThat` and `post`/`status` imports already exist in this file.
 
-- [ ] **Step 8: Add `AlertColumnContract` to platform-common**
+- [ ] **Step 8: Add `AlertColumn` + `AlertColumnContract` to platform-common**
+
+Two files (Java: one public top-level type per file). `AlertColumn.java`:
+
+```java
+package com.thinhbui303.observability.common;
+
+public record AlertColumn(String name, String pgType, boolean nullable) {
+}
+```
+
+`AlertColumnContract.java`:
 
 ```java
 package com.thinhbui303.observability.common;
 
 import java.util.List;
-
-public record AlertColumn(String name, String pgType, boolean nullable) {
-}
 
 public final class AlertColumnContract {
 
