@@ -16,6 +16,20 @@ spring:
   elasticsearch:
     uris: http://localhost:9200 # Will be overridden in tests if using Testcontainers, or use local
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: latest
+      group-id: dashboard-test-group
+
 jwt:
   secret: a-very-long-secret-key-for-testing-purposes-only-1234567890
   expiration-ms: 3600000
+
+app:
+  dashboard:
+    metrics-tick-ms: 500      # fast tick for integration tests
+    metrics-window-seconds: 300
+    health-unavailable-after-ms: 120000
+    health-degraded-after-ms: 30000
+    health-error-rate-threshold: 0.05

@@ -11,7 +11,17 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
 
 app:
   audit:
     trust-forwarded: false
+  dashboard:
+    metrics-tick-ms: 5000        # 0.2: scheduled broadcast period (5s)
+    metrics-window-seconds: 300  # 0.2: rolling error-rate window (5 min, decision locked)
+    health-unavailable-after-ms: 120000   # 4.9.1: lastSeen >= 2min -> UNAVAILABLE (eval FIRST)
+    health-degraded-after-ms: 30000       # 4.9.1: lastSeen >= 30s OR errorRate >= 5% -> DEGRADED
+    health-error-rate-threshold: 0.05     # 4.9.1: >= 5% error rate -> DEGRADED
