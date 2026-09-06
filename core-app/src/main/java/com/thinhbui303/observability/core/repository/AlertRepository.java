@@ -17,4 +17,6 @@ public interface AlertRepository extends JpaRepository<AlertEntity, String> {
     List<AlertEntity> search(@Param("serviceId") String serviceId,
                              @Param("environment") String environment,
                              @Param("status") String status);
+
+    long countByStatusIn(List<String> statuses);
 }
