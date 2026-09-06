@@ -7,3 +7,11 @@ spring:
     password: ${POSTGRES_PASSWORD:obs_password}
   flyway:
     enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+app:
+  audit:
+    trust-forwarded: false
