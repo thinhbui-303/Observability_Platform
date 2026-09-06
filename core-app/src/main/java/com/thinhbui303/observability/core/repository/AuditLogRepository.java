@@ -12,9 +12,9 @@ import java.util.List;
 public interface AuditLogRepository extends JpaRepository<AuditLogEntity, Long> {
 
     @Query("SELECT a FROM AuditLogEntity a " +
-           "WHERE (:action IS NULL OR a.action = :action) " +
-           "AND (:username IS NULL OR a.username = :username) " +
-           "AND (:resourceTarget IS NULL OR a.resourceTarget LIKE CONCAT('%', :resourceTarget, '%')) " +
+           "WHERE (:action IS NULL OR a.action = CAST(:action AS string)) " +
+           "AND (:username IS NULL OR a.username = CAST(:username AS string)) " +
+           "AND (:resourceTarget IS NULL OR a.resourceTarget LIKE CONCAT('%', CAST(:resourceTarget AS string), '%')) " +
            "ORDER BY a.id DESC")
     List<AuditLogEntity> search(@Param("action") String action,
                                 @Param("username") String username,
