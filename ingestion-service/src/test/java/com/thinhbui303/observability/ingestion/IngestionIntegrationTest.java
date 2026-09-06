@@ -2,6 +2,7 @@ package com.thinhbui303.observability.ingestion;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.thinhbui303.observability.common.ApiKeyHashUtil;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -95,11 +96,19 @@ class IngestionIntegrationTest {
         if (!dbInitialized) {
             jdbcTemplate.update("DELETE FROM service_api_keys WHERE service_id = ?", "test-service");
             jdbcTemplate.update("DELETE FROM services WHERE id = ?", "test-service");
+            jdbcTemplate.update("DELETE FROM service_api_keys WHERE service_id = ?", "test-disabled-service");
+            jdbcTemplate.update("DELETE FROM services WHERE id = ?", "test-disabled-service");
 
-            // Key: test_key_123 -> Hash: 1f8e8c97805e4ad56c611029fbba4c04dab40bf05d18c46655696357705cc136
+            // Key: test_key_123 -> SHA-256 = 1f8e8c97805e4ad56c611029fbba4c04dab40bf05d18c46655696357705cc136
             jdbcTemplate.update("INSERT INTO services (id, name, team_owner, environment) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO NOTHING", "test-service", "Test Service", "backend-team", "production");
             jdbcTemplate.update("INSERT INTO service_api_keys (service_id, key_prefix, key_hash, created_at) VALUES (?, ?, ?, now())",
-                    "test-service", "test_key", "1f8e8c97805e4ad56c611029fbba4c04dab40bf05d18c46655696357705cc136");
+                    "test-service", "test_key", ApiKeyHashUtil.hash("test_key_123"));
+
+            // Disabled service: same key format, DIFFERENT id, status DISABLED
+            jdbcTemplate.update("INSERT INTO services (id, name, team_owner, environment, status) VALUES (?, ?, ?, ?, 'DISABLED') ON CONFLICT (id) DO NOTHING",
+                    "test-disabled-service", "Test Disabled Service", "backend-team", "production");
+            jdbcTemplate.update("INSERT INTO service_api_keys (service_id, key_prefix, key_hash, created_at) VALUES (?, ?, ?, now())",
+                    "test-disabled-service", "test_disab", ApiKeyHashUtil.hash("test_disabled_key_123"));
             dbInitialized = true;
         }
     }
@@ -234,5 +243,43 @@ class IngestionIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void testHashConsistency_CoreAppAndIngestionService_ShouldMatch() throws Exception {
+        // Hash produced by the shared platform-common util (the same util core-app uses to
+        // generate a key) is accepted by ingestion's ApiKeyValidator for the seeded key.
+        assertThat(ApiKeyHashUtil.hash("test_key_123")).isEqualTo(
+                "1f8e8c97805e4ad56c611029fbba4c04dab40bf05d18c46655696357705cc136");
+
+        String payload = """
+                {
+                    "timestamp": "2026-09-06T10:00:00Z",
+                    "level": "INFO",
+                    "message": "Hash consistency"
+                }
+                """;
+        mockMvc.perform(post("/api/v1/telemetry/logs")
+                        .header("X-API-Key", "test_key_123")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void testDisabledService_ShouldRejectIngestion() throws Exception {
+        String payload = """
+                {
+                    "timestamp": "2026-09-06T10:00:00Z",
+                    "level": "INFO",
+                    "message": "Disabled service rejected"
+                }
+                """;
+        // key hash is valid (test_disabled_key_123 -> stored via ApiKeyHashUtil) but services.status = 'DISABLED'
+        mockMvc.perform(post("/api/v1/telemetry/logs")
+                        .header("X-API-Key", "test_disabled_key_123")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isUnauthorized());
     }
 }
