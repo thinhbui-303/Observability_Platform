@@ -67,6 +67,14 @@ public class CoreAppIntegrationTest {
             
             jdbcTemplate.execute("INSERT INTO user_roles (user_id, role_id) VALUES (" + savedUser.getId() + ", (SELECT id FROM roles WHERE name = 'ADMIN'))");
         }
+        if (userRepository.findByUsername("test_viewer_user").isEmpty()) {
+            UserEntity viewer = new UserEntity();
+            viewer.setUsername("test_viewer_user");
+            viewer.setPasswordHash(passwordEncoder.encode("password123"));
+            UserEntity savedViewer = userRepository.save(viewer);
+            jdbcTemplate.execute("INSERT INTO roles (name) VALUES ('VIEWER') ON CONFLICT (name) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO user_roles (user_id, role_id) VALUES (" + savedViewer.getId() + ", (SELECT id FROM roles WHERE name = 'VIEWER'))");
+        }
         
         // Seed some Elasticsearch logs for testing
         // Do not delete logs-* here to avoid destroying other test/real data
@@ -127,6 +135,8 @@ public class CoreAppIntegrationTest {
     void tearDown() {
         jdbcTemplate.execute("DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username = 'test_admin_user')");
         jdbcTemplate.execute("DELETE FROM users WHERE username = 'test_admin_user'");
+        jdbcTemplate.execute("DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username IN ('test_viewer_user'))");
+        jdbcTemplate.execute("DELETE FROM users WHERE username = 'test_viewer_user'");
         
         String traceId1 = System.getProperty("TEST_TRACE_ID_1");
         if (traceId1 != null) {
@@ -270,5 +280,27 @@ public class CoreAppIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors").isArray());
+    }
+
+    @Test
+    void testSearchLogs_AsViewer_ShouldReturn200() throws Exception {
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setUsername("test_viewer_user");
+        loginRequest.setPassword("password123");
+
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String jwt = login.getResponse().getContentAsString();
+        int start = jwt.indexOf("\"accessToken\":\"") + 15;
+        int end = jwt.indexOf("\"", start);
+        String token = jwt.substring(start, end);
+
+        mockMvc.perform(get("/api/v1/logs?service=payment-service")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
     }
 }

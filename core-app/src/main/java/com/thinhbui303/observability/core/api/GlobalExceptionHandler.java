@@ -1,11 +1,15 @@
 package com.thinhbui303.observability.core.api;
 
 import com.thinhbui303.observability.core.api.dto.UnifiedResponse;
+import com.thinhbui303.observability.core.api.exception.BadRequestException;
+import com.thinhbui303.observability.core.api.exception.ConflictException;
+import com.thinhbui303.observability.core.api.exception.NotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -74,6 +78,50 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<UnifiedResponse<Void>> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
+        UnifiedResponse<Void> response = new UnifiedResponse<>(
+                "VALIDATION_ERROR",
+                ex.getMessage(),
+                DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<UnifiedResponse<Void>> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        UnifiedResponse<Void> response = new UnifiedResponse<>(
+                "ACCESS_DENIED",
+                "You do not have permission to perform this action",
+                DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<UnifiedResponse<Void>> handleNotFound(NotFoundException ex, HttpServletRequest request) {
+        UnifiedResponse<Void> response = new UnifiedResponse<>(
+                "NOT_FOUND",
+                ex.getMessage(),
+                DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<UnifiedResponse<Void>> handleConflict(ConflictException ex, HttpServletRequest request) {
+        UnifiedResponse<Void> response = new UnifiedResponse<>(
+                "CONFLICT",
+                ex.getMessage(),
+                DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<UnifiedResponse<Void>> handleBadRequest(BadRequestException ex, HttpServletRequest request) {
         UnifiedResponse<Void> response = new UnifiedResponse<>(
                 "VALIDATION_ERROR",
                 ex.getMessage(),
