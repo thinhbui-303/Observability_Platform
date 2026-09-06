@@ -92,3 +92,50 @@ Toàn bộ reactor phải pass khi chạy:
 mvn clean test -o
 ```
 *Yêu cầu*: `BUILD SUCCESS`. Lưu ý integration tests cần docker-compose infra đang chạy (`obs_postgres`, `obs_kafka`, `obs_redis`, `obs_elasticsearch`).
+
+---
+
+## Slice 5: Service Registry, Alert Management & Audit Log (core-app API)
+
+### 1. RBAC Matrix
+
+Các endpoint mới của Slice 5 theo đúng SRS 13.2. `ROLE_` prefix được dùng trong `@PreAuthorize` (method security đã bật qua `@EnableMethodSecurity`).
+
+| Endpoint | Method | Roles |
+|---|---|---|
+| `/api/v1/services` | POST | `ROLE_ADMIN` |
+| `/api/v1/services` | GET | `ROLE_ADMIN`, `ROLE_DEVOPS` |
+| `/api/v1/services/{id}/status` | PATCH | `ROLE_ADMIN` |
+| `/api/v1/alert-rules` | POST / PUT / PATCH enabled / DELETE / GET | `ROLE_ADMIN`, `ROLE_DEVOPS` |
+| `/api/v1/alerts` | GET | mọi role đã xác thực |
+| `/api/v1/alerts/{id}/acknowledge` | PATCH | `ROLE_ADMIN`, `ROLE_DEVOPS`, `ROLE_DEVELOPER` |
+| `/api/v1/alerts/{id}/resolve` | PATCH | `ROLE_ADMIN`, `ROLE_DEVOPS` |
+| `/api/v1/audit-logs` | GET | `ROLE_ADMIN`, `ROLE_DEVOPS` |
+
+### 2. Audit Semantics
+
+Mọi mutation đều ghi audit qua `AuditLogService`:
+- **`recordSuccess`** chạy trong **REQUIRED** — join transaction của mutation → nếu mutation rollback thì row audit cũng rollback theo (atomic, BR-009).
+- **`recordFailure`** chạy trong **REQUIRES_NEW** — transaction riêng, commit độc lập → sống sót khi transaction ngoài rollback (ghi row FAILED khi ném `ConflictException`/`BadRequestException` sau call).
+- FAILED rows chỉ được ghi trong phạm vi kiểm tra trạng thái/business (transition không hợp lệ, liên hệ nhân quả), không phải mọi exception.
+- IP client qua `OperationContext.resolveIp`; flag `app.audit.trust-forwarded: false` mặc định có nghĩa **không** tin tưởng `X-Forwarded-For` từ request (tránh spoof).
+
+### 3. Locked Decisions (Slice 5)
+
+1. **DEVOPS scope**: audit/read và alert management mở cho `ROLE_DEVOPS` (không gói gọn ở ADMIN).
+2. **OPEN ≡ TRIGGERED** state machine: `TRIGGERED/OPEN → ACKNOWLEDGED → RESOLVED`. `OPEN` chỉ là alias hiển thị của trạng thái `TRIGGERED` khi chưa acknowledge.
+3. **Slug service id**: `services.id` sinh từ slug của `name` (`SlugBuilder`); nếu trùng `id`, tự động hậu tố `-2`, `-3`, … Chỉ `id` là unique (LLD §2) — **không** có business rule về uniqueness của `name`, nên không có app-level name check.
+
+### 4. API Key Lifecycle
+
+- Key sinh **một lần duy nhất** lúc tạo service: prefix `sk_` + 32 bytes ngẫu nhiên (Base64 URL-safe). **Plaintext chỉ trả về đúng lúc creation** (response `data.plainKey`), giữ nguyên `key_prefix` (12 ký tự) + `key_hash` (SHA-256 hex).
+- `key_hash` sinh bằng `ApiKeyHashUtil.hash` (dùng chung từ `platform-common`).
+- Ingestion đã sẵn enforce `s.status = 'ACTIVE'` trong `ApiKeyValidator.java:30` — service ở trạng thái khác `ACTIVE` không thể gửi log.
+
+### 5. Analytics Rule-Cache Note
+
+Thay đổi rule trong `analytics-engine` được phản ánh **trong ≤ 30 s** (by design): `analytics.rule.cache.refresh-rate: 30000` (test dùng 2000 ms). Không phải real-time.
+
+### 6. `AlertColumnContract` Rationale
+
+Hai module độc lập (`alert-consumer` và `core-app`) đều map lên bảng `alerts` qua entity riêng. `AlertColumnContract.ALERTS` trong `platform-common` là **single source of truth** cho `V4__create_alerts.sql`; mỗi module có một contract test đối chiếu `information_schema.columns` field-by-field (`AlertColumnContractVsConsumerEntityTest`, `AlertColumnContractVsCoreEntityTest`) bắt sớm hiện tượng drift giữa migration và entity.
