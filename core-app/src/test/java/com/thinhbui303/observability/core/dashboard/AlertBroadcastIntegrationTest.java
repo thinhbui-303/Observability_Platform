@@ -14,6 +14,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -70,6 +72,9 @@ public class AlertBroadcastIntegrationTest {
 
     @Autowired
     private KafkaTemplate<Object, Object> kafkaTemplate;
+
+    @Autowired
+    private KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
     // GENERIC BOUND: core-app has no custom KafkaTemplate bean (controller: rg over core-app
     // shows zero producer/consumer code), so Boot's auto-config bean KafkaTemplate<Object,Object>
     // is the only one. An injection point typed KafkaTemplate<String,Object> fails generic
@@ -100,6 +105,24 @@ public class AlertBroadcastIntegrationTest {
         if (stompClient != null) {
             try { stompClient.stop(); } catch (Exception ignored) { }
         }
+    }
+
+    /**
+     * Wait until at least one dashboard Kafka listener container has partitions assigned.
+     * This prevents the race condition where the test produces a message before the
+     * consumer group rebalance has completed (especially on resource-constrained machines).
+     */
+    private void awaitKafkaConsumerReady() throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            for (MessageListenerContainer container : kafkaListenerEndpointRegistry.getListenerContainers()) {
+                if (container.getAssignedPartitions() != null && !container.getAssignedPartitions().isEmpty()) {
+                    return;
+                }
+            }
+            Thread.sleep(200);
+        }
+        throw new IllegalStateException("Kafka consumer did not receive partition assignment within 30s");
     }
 
     private String wsUrl() {
@@ -141,28 +164,37 @@ public class AlertBroadcastIntegrationTest {
             }
         });
 
+        // STOMP SUBSCRIBE registration over SockJS/inboundChannel is asynchronous.
+        // Wait briefly for broker subscription mapping to become active (mirrors ReplayListener 500ms delay).
+        Thread.sleep(1000);
+
+        // Wait for Kafka consumer to be fully assigned before producing.
+        awaitKafkaConsumerReady();
+
         String alertId = "tda-" + UUID.randomUUID().toString().replace("-", "");
-            long started = System.currentTimeMillis();
-            kafkaTemplate.send("system-alerts", alertId,
-                    JSON.writeValueAsString(new CanonicalAlertEvent(
-                            alertId, 999L, "test-dash-svc", "production", "CRITICAL", "TRIGGERED",
-                            "ERROR_SPIKE: burst", 300, Instant.parse("2026-09-06T10:00:00Z"),
-                            5, Instant.now(), null, null, "test-log-trace", List.of("SLACK"))))
-                    .get();
+        long started = System.currentTimeMillis();
+        kafkaTemplate.send("system-alerts", alertId,
+                JSON.writeValueAsString(new CanonicalAlertEvent(
+                        alertId, 999L, "test-dash-svc", "production", "CRITICAL", "TRIGGERED",
+                        "ERROR_SPIKE: burst", 300, Instant.parse("2026-09-06T10:00:00Z"),
+                        5, Instant.now(), null, null, "test-log-trace", List.of("SLACK"))))
+                .get();
 
-            DashboardAlertPayload got = received.poll(10, TimeUnit.SECONDS);
-            long latencyMs = System.currentTimeMillis() - started;
+        DashboardAlertPayload got = received.poll(10, TimeUnit.SECONDS);
+        long latencyMs = System.currentTimeMillis() - started;
+        System.out.println(">>> MEASURED ALERT BROADCAST LATENCY: " + latencyMs + " ms <<<");
 
-            assertThat(got).isNotNull();
-            assertThat(got.alertId()).isEqualTo(alertId);
-            assertThat(got.severity()).isEqualTo("CRITICAL");
-            assertThat(got.description()).isEqualTo("ERROR_SPIKE: burst");
-            assertThat(got.ruleId()).isEqualTo(999L);
-            assertThat(latencyMs).isLessThan(5000);
+        assertThat(got).isNotNull();
+        assertThat(got.alertId()).isEqualTo(alertId);
+        assertThat(got.severity()).isEqualTo("CRITICAL");
+        assertThat(got.description()).isEqualTo("ERROR_SPIKE: burst");
+        assertThat(got.ruleId()).isEqualTo(999L);
+        assertThat(latencyMs).isLessThan(5000);
     }
 
     @Test
     void testAlertBroadcastConsumer_ShouldNotWriteToDatabase() throws Exception {
+        awaitKafkaConsumerReady();
         String alertId = "tda-nodw-" + UUID.randomUUID().toString().replace("-", "");
         kafkaTemplate.send("system-alerts", alertId,
                 JSON.writeValueAsString(new CanonicalAlertEvent(
