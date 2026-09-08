@@ -139,3 +139,22 @@ Thay đổi rule trong `analytics-engine` được phản ánh **trong ≤ 30 s*
 ### 6. `AlertColumnContract` Rationale
 
 Hai module độc lập (`alert-consumer` và `core-app`) đều map lên bảng `alerts` qua entity riêng. `AlertColumnContract.ALERTS` trong `platform-common` là **single source of truth** cho `V4__create_alerts.sql`; mỗi module có một contract test đối chiếu `information_schema.columns` field-by-field (`AlertColumnContractVsConsumerEntityTest`, `AlertColumnContractVsCoreEntityTest`) bắt sớm hiện tượng drift giữa migration và entity.
+
+---
+
+## Slice 6: WebSocket Dashboard (STOMP)
+
+### 1. Locked Decisions (Slice 6)
+
+1. **Nguồn dữ liệu Alert real-time**: `core-app` có một `AlertBroadcastConsumer` độc lập (`dashboard-broadcast-group`) đọc từ topic `system-alerts` và đẩy trực tiếp qua WebSocket (không ghi vào DB, đảm bảo separation of concerns với `alert-consumer`).
+2. **Nguồn dữ liệu Metrics**: `DashboardMetricsScheduler` định kỳ (5s) query Elasticsearch để tính Logs/sec và Error Rate. Error Rate sử dụng rolling window **5 phút** (cố định) để đảm bảo độ tin cậy của chỉ số.
+3. **Service Health**: Đánh giá theo thứ tự deterministic tuyệt đối:
+   - `UNAVAILABLE`: lastSeen >= 2 phút.
+   - `DEGRADED`: lastSeen >= 30s HOẶC errorRate >= 5%.
+   - `HEALTHY`: Các trường hợp còn lại.
+4. **Xác thực STOMP**: Sử dụng `JwtStompChannelInterceptor` chặn tại thời điểm gửi `CONNECT` frame để xác thực token (re-use `JwtTokenProvider`).
+5. **Dashboard RBAC**: Cho phép truy cập từ role `VIEWER` trở lên, nhất quán với các API Read-only của hệ thống.
+
+### 2. Client Reconnect & Caching
+
+Hệ thống lưu giữ một in-memory snapshot (`AtomicReference`) chứa dữ liệu metrics và service-health mới nhất. Khi một STOMP client vừa gửi lệnh `SUBSCRIBE`, server sẽ lập tức đẩy snapshot này về cho **riêng session đó**, giúp client thấy ngay dữ liệu mà không cần phải chờ đến chu kỳ broadcast (5s) kế tiếp.
