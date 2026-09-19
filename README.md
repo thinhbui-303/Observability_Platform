@@ -1,169 +1,274 @@
-# Enterprise Log Aggregation & Real-time Observability Platform
+# Observability Platform
 
-## Phase 1: Infrastructure & Project Bootstrap
+**Enterprise Log Aggregation & Real-time Observability Platform**
 
-Dự án này sử dụng Maven multi-module architecture.
-
-### Các modules:
-- `platform-common`: Chứa các Canonical models và Enums.
-- `platform-db`: Chứa Flyway migration scripts.
-- `core-app`: Entry point quản lý system, thực thi Flyway migrations.
-- `ingestion-service`, `indexer-worker`, `analytics-engine`, `alert-consumer`, `notification-dispatcher`: Các services xử lý nghiệp vụ (hiện tại chỉ dựng khung).
+A full-stack, production-grade observability platform built with microservices architecture. Ingests, processes, indexes, and visualizes logs from distributed services in real-time with alerting, RBAC, and a modern React dashboard.
 
 ---
 
-## Hướng dẫn Smoke Test Hạ tầng (Local)
+## Architecture
 
-Để đảm bảo hạ tầng đã được setup thành công, hãy làm theo các bước sau:
-
-### Bước 1: Khởi động các container phụ thuộc
-
-1. Copy file `.env.example` thành `.env` (có thể giữ nguyên các giá trị mặc định cho local dev).
-2. Chạy lệnh:
-   ```bash
-   docker-compose up -d
-   ```
-3. Kiểm tra trạng thái của các container:
-   ```bash
-   docker ps
-   ```
-   *Yêu cầu*: Cả 4 container (`obs_postgres`, `obs_kafka`, `obs_redis`, `obs_elasticsearch`) phải ở trạng thái `(healthy)`.
-   
-   *(Lưu ý: Elasticsearch và Kafka có thể mất khoảng 30s - 1 phút để khởi động và pass healthcheck lần đầu).*
-
-### Bước 2: Build toàn bộ project
-
-Chạy lệnh maven để đảm bảo code compile thành công:
-```bash
-mvn clean install
 ```
-*Yêu cầu*: Build báo `BUILD SUCCESS` cho tất cả modules.
-
-### Bước 3: Chạy Flyway Migration
-
-Chạy `core-app` để trigger Flyway migration:
-```bash
-cd core-app
-mvn spring-boot:run
++-------------+     +--------------+     +-------+     +----------------+     +---------------+
+|  App Logs   |---->|  Fluent Bit  |---->|Ingest |---->|     Kafka      |---->| Indexer Worker|
+| (*.log)     |     |  (Agent)     |     |Service|     |  (raw-logs)    |     | (Bulk -> ES)  |
++-------------+     +--------------+     +-------+     +-------+--------+     +---------------+
+                                                                |
+                                              +-----------------+-----------------+
+                                              v                 v                 v
+                                     +----------------+ +--------------+ +--------------------+
+                                     |Analytics Engine| |Alert Consumer| |Notification        |
+                                     |(Rule Eval)     | |(Persist)     | |Dispatcher          |
+                                     +-------+--------+ +--------------+ |(Slack/Telegram/WH) |
+                                             |                           +--------------------+
+                                             v
+                                     +--------------+     +-----------------------+
+                                     |  system-     |---->|      Core App         |
+                                     |  alerts      |     | (REST API + WebSocket)|
+                                     |  (topic)     |     +-----------+-----------+
+                                     +--------------+                 |
+                                                                      v
+                                                              +--------------+
+                                                              |   Frontend   |
+                                                              | (React/Vite) |
+                                                              +--------------+
 ```
-*Yêu cầu*: Trong log khởi động, bạn sẽ thấy Flyway chạy tuần tự từ `V1` đến `V5`. Ứng dụng khởi động thành công (Tomcat started on port 8080). Sau khi ứng dụng báo started, bạn có thể tắt bằng `Ctrl+C`.
-
-### Bước 4: Kiểm tra Database Schema
-
-Dùng `psql` hoặc bất kỳ Database Client (DBeaver, DataGrip) để kết nối vào PostgreSQL:
-- **Host**: `localhost`
-- **Port**: `5432`
-- **DB Name**: `observability`
-- **User**: `obs_user` (theo .env)
-- **Password**: `obs_password` (theo .env)
-
-Chạy lệnh SQL sau để xác nhận các bảng đã được tạo:
-```sql
-SELECT table_name 
-FROM information_schema.tables 
-WHERE table_schema = 'public';
-```
-*Yêu cầu*: Phải hiển thị các bảng: `users`, `roles`, `user_roles`, `services`, `service_api_keys`, `alert_rules`, `alert_rule_channels`, `alerts`, `audit_logs` và `flyway_schema_history`.
 
 ---
 
-## Slice 4: Alerting Pipeline (alert-consumer + notification-dispatcher)
+## Modules
 
-Topic `system-alerts` feed hai consumer độc lập trong hai module riêng:
-- **`alert-consumer`** (group `alert-persistence-group`): Persist mỗi alert xuống PostgreSQL theo cách idempotent.
-- **`notification-dispatcher`** (group `notification-dispatch-group`): Gửi thông báo theo cấu hình `alert_rule_channels` (hỗ trợ SLACK / TELEGRAM / WEBHOOK; WEBSOCKET deferred). Dùng Redis cooldown window 300s theo `(service, environment, rule)` để tránh spam.
-
-### Quyết định Business-key Dedup
-
-Bảng `alerts` coi `(rule_id, service_id, environment, window_start)` là **một business alert duy nhất** (`uq_alerts_business_key` trong `V4__create_alerts.sql`).
-- Emit trùng với `alertId` mới → tăng `occurrence_count + 1` trên row hiện có.
-- Emit trùng exact `alertId` → idempotent skip.
-
-Slice 4 **không cần thêm migration mới** (V1–V7 vẫn đầy đủ).
-
-### Lưu ý Mock Webhook trong Tests
-
-Các test dùng `MockRestServiceServer` (spring-test) để mock webhook client. **Không có token Slack/Telegram thật hay gọi HTTP thực** trong test. Ở production, cột `target` chứa webhook URL thật.
-
-### Kiểm tra Regression
-
-Toàn bộ reactor phải pass khi chạy:
-```bash
-mvn clean test -o
-```
-*Yêu cầu*: `BUILD SUCCESS`. Lưu ý integration tests cần docker-compose infra đang chạy (`obs_postgres`, `obs_kafka`, `obs_redis`, `obs_elasticsearch`).
-
----
-
-## Slice 5: Service Registry, Alert Management & Audit Log (core-app API)
-
-### 1. RBAC Matrix
-
-Các endpoint mới của Slice 5 theo đúng SRS 13.2. `ROLE_` prefix được dùng trong `@PreAuthorize` (method security đã bật qua `@EnableMethodSecurity`).
-
-| Endpoint | Method | Roles |
+| Module | Port | Description |
 |---|---|---|
-| `/api/v1/services` | POST | `ROLE_ADMIN` |
-| `/api/v1/services` | GET | `ROLE_ADMIN`, `ROLE_DEVOPS` |
-| `/api/v1/services/{id}/status` | PATCH | `ROLE_ADMIN` |
-| `/api/v1/alert-rules` | POST / PUT / PATCH enabled / DELETE / GET | `ROLE_ADMIN`, `ROLE_DEVOPS` |
-| `/api/v1/alerts` | GET | mọi role đã xác thực |
-| `/api/v1/alerts/{id}/acknowledge` | PATCH | `ROLE_ADMIN`, `ROLE_DEVOPS`, `ROLE_DEVELOPER` |
-| `/api/v1/alerts/{id}/resolve` | PATCH | `ROLE_ADMIN`, `ROLE_DEVOPS` |
-| `/api/v1/audit-logs` | GET | `ROLE_ADMIN`, `ROLE_DEVOPS` |
-
-### 2. Audit Semantics
-
-Mọi mutation đều ghi audit qua `AuditLogService`:
-- **`recordSuccess`** chạy trong **REQUIRED** — join transaction của mutation → nếu mutation rollback thì row audit cũng rollback theo (atomic, BR-009).
-- **`recordFailure`** chạy trong **REQUIRES_NEW** — transaction riêng, commit độc lập → sống sót khi transaction ngoài rollback (ghi row FAILED khi ném `ConflictException`/`BadRequestException` sau call).
-- FAILED rows chỉ được ghi trong phạm vi kiểm tra trạng thái/business (transition không hợp lệ, liên hệ nhân quả), không phải mọi exception.
-- IP client qua `OperationContext.resolveIp`; flag `app.audit.trust-forwarded: false` mặc định có nghĩa **không** tin tưởng `X-Forwarded-For` từ request (tránh spoof).
-
-### 3. Locked Decisions (Slice 5)
-
-1. **DEVOPS scope**: audit/read và alert management mở cho `ROLE_DEVOPS` (không gói gọn ở ADMIN).
-2. **OPEN ≡ TRIGGERED** state machine: `TRIGGERED/OPEN → ACKNOWLEDGED → RESOLVED`. `OPEN` chỉ là alias hiển thị của trạng thái `TRIGGERED` khi chưa acknowledge.
-3. **Slug service id**: `services.id` sinh từ slug của `name` (`SlugBuilder`); nếu trùng `id`, tự động hậu tố `-2`, `-3`, … Chỉ `id` là unique (LLD §2) — **không** có business rule về uniqueness của `name`, nên không có app-level name check.
-
-### 4. API Key Lifecycle
-
-- Key sinh **một lần duy nhất** lúc tạo service: prefix `sk_` + 32 bytes ngẫu nhiên (Base64 URL-safe). **Plaintext chỉ trả về đúng lúc creation** (response `data.plainKey`), giữ nguyên `key_prefix` (12 ký tự) + `key_hash` (SHA-256 hex).
-- `key_hash` sinh bằng `ApiKeyHashUtil.hash` (dùng chung từ `platform-common`).
-- Ingestion đã sẵn enforce `s.status = 'ACTIVE'` trong `ApiKeyValidator.java:30` — service ở trạng thái khác `ACTIVE` không thể gửi log.
-
-### 5. Analytics Rule-Cache Note
-
-Thay đổi rule trong `analytics-engine` được phản ánh **trong ≤ 30 s** (by design): `analytics.rule.cache.refresh-rate: 30000` (test dùng 2000 ms). Không phải real-time.
-
-### 6. `AlertColumnContract` Rationale
-
-Hai module độc lập (`alert-consumer` và `core-app`) đều map lên bảng `alerts` qua entity riêng. `AlertColumnContract.ALERTS` trong `platform-common` là **single source of truth** cho `V4__create_alerts.sql`; mỗi module có một contract test đối chiếu `information_schema.columns` field-by-field (`AlertColumnContractVsConsumerEntityTest`, `AlertColumnContractVsCoreEntityTest`) bắt sớm hiện tượng drift giữa migration và entity.
+| **platform-common** | - | Shared DTOs, utilities, CanonicalLogEvent schema |
+| **platform-db** | - | Flyway migrations (PostgreSQL schema) |
+| **ingestion-service** | 8081 | API Key auth, rate limiting, log validation, Kafka producer |
+| **indexer-worker** | 8082 | Kafka consumer, Elasticsearch bulk indexing, DLQ, retry |
+| **analytics-engine** | 8083 | Sliding-window rule evaluation (ERROR_SPIKE, PATTERN_MATCH) |
+| **alert-consumer** | 8084 | Idempotent alert persistence to PostgreSQL |
+| **notification-dispatcher** | 8085 | Multi-channel notifications (Slack, Telegram, Webhook) with Redis cooldown |
+| **core-app** | 8080 | REST API (auth, log search, services, alerts, audit) + WebSocket dashboard |
+| **frontend** | 5173 | React + Vite + TailwindCSS dashboard UI |
 
 ---
 
-## Slice 6: WebSocket Dashboard (STOMP)
+## Tech Stack
 
-### 1. Locked Decisions (Slice 6)
+| Layer | Technology |
+|---|---|
+| **Language** | Java 21 (Virtual Threads), TypeScript |
+| **Framework** | Spring Boot 3.3, React 18 |
+| **Message Broker** | Apache Kafka (KRaft mode) |
+| **Search Engine** | Elasticsearch 8.15 |
+| **Database** | PostgreSQL 16 |
+| **Cache** | Redis 7, Caffeine |
+| **Log Shipper** | Fluent Bit 3.1 |
+| **Auth** | JWT (Bearer), API Key (X-API-Key) |
+| **Real-time** | STOMP over WebSocket |
+| **Build** | Maven (multi-module), Vite |
+| **Testing** | JUnit 5, Testcontainers, MockRestServiceServer |
+| **API Docs** | SpringDoc OpenAPI 3 (auto-generated) |
 
-1. **Nguồn dữ liệu Alert real-time**: `core-app` có một `AlertBroadcastConsumer` độc lập (`dashboard-broadcast-group`) đọc từ topic `system-alerts` và đẩy trực tiếp qua WebSocket (không ghi vào DB, đảm bảo separation of concerns với `alert-consumer`).
-2. **Nguồn dữ liệu Metrics**: `DashboardMetricsScheduler` định kỳ (5s) query Elasticsearch để tính Logs/sec và Error Rate. Error Rate sử dụng rolling window **5 phút** (cố định) để đảm bảo độ tin cậy của chỉ số.
-3. **Service Health**: Đánh giá theo thứ tự deterministic tuyệt đối:
-   - `UNAVAILABLE`: lastSeen >= 2 phút.
-   - `DEGRADED`: lastSeen >= 30s HOẶC errorRate >= 5%.
-   - `HEALTHY`: Các trường hợp còn lại.
-4. **Xác thực STOMP**: Sử dụng `JwtStompChannelInterceptor` chặn tại thời điểm gửi `CONNECT` frame để xác thực token (re-use `JwtTokenProvider`).
-5. **Dashboard RBAC**: Cho phép truy cập từ role `VIEWER` trở lên, nhất quán với các API Read-only của hệ thống.
+---
 
-### 2. Client Reconnect & Caching
+## Quick Start
 
-Hệ thống lưu giữ một in-memory snapshot (`AtomicReference`) chứa dữ liệu metrics và service-health mới nhất. Khi một STOMP client vừa gửi lệnh `SUBSCRIBE`, server sẽ lập tức đẩy snapshot này về cho **riêng session đó**, giúp client thấy ngay dữ liệu mà không cần phải chờ đến chu kỳ broadcast (5s) kế tiếp.
+### Prerequisites
 
-### 3. STOMP Endpoints v� Topics
-- **Endpoint k?t n?i**: /ws (S? d?ng chu?n STOMP over WebSocket)
-- **Co ch? x�c th?c**: B?t bu?c g?i JWT token trong header Authorization khi g?i STOMP CONNECT frame.
-- **Danh s�ch Topics (Subscribe)**:
-  - /topic/dashboard/alerts: Nh?n d? li?u real-time khi c� alert m?i du?c ph�t (t? AlertBroadcastConsumer).
-  - /topic/dashboard/metrics: Nh?n b?n tin t?ng h?p Logs/sec v� Error Rate (d?nh k? 5s).
-  - /topic/dashboard/service-health: Nh?n tr?ng th�i health c?a c�c service (UNAVAILABLE, DEGRADED, HEALTHY).
+- **Java 21+**
+- **Maven 3.9+**
+- **Node.js 18+** (for frontend)
+- **Docker Desktop** (for infrastructure services)
 
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/thinhbui-303/Observability_Platform.git
+cd Observability_Platform
+
+# Copy environment template
+cp .env.example .env
+# Edit .env if needed (defaults work for local dev)
+```
+
+### 2. Start infrastructure
+
+```bash
+docker compose up -d
+```
+
+This starts: **PostgreSQL**, **Redis**, **Kafka**, **Elasticsearch**, **Kibana**, and **Fluent Bit**.
+
+### 3. Build all Java modules
+
+```bash
+mvn clean install -DskipTests
+```
+
+### 4. Start backend services
+
+**Option A - PowerShell script (Windows):**
+
+```powershell
+.\run-all.ps1
+```
+
+**Option B - Manual (each in a separate terminal):**
+
+```bash
+cd ingestion-service  && mvn spring-boot:run
+cd indexer-worker     && mvn spring-boot:run
+cd analytics-engine   && mvn spring-boot:run
+cd alert-consumer     && mvn spring-boot:run
+cd notification-dispatcher && mvn spring-boot:run
+cd core-app           && mvn spring-boot:run
+```
+
+### 5. Start frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173** and login with `admin` / `password`.
+
+---
+
+## Frontend Pages
+
+| Page | Description |
+|---|---|
+| **Login** | JWT authentication with role-based access |
+| **Dashboard** | Real-time metrics via WebSocket (Logs/sec, Error Rate, Service Health) |
+| **Logs Explorer** | Full-text search with filters (service, level, time range, trace ID) |
+| **Trace View** | Distributed trace timeline visualization |
+| **Services** | Register services, manage API keys, enable/disable |
+| **Alert Rules** | Create/edit rules (ERROR_SPIKE, PATTERN_MATCH) with notification channels |
+| **Alerts** | View triggered alerts, acknowledge, resolve |
+| **Audit Logs** | System-wide audit trail for all mutations |
+| **DLQ Manager** | View and reprocess dead-letter queue messages |
+
+---
+
+## RBAC Matrix
+
+| Endpoint | ADMIN | DEVOPS | DEVELOPER | VIEWER |
+|---|:---:|:---:|:---:|:---:|
+| Login | Y | Y | Y | Y |
+| Search Logs | Y | Y | Y | Y |
+| Dashboard (WebSocket) | Y | Y | Y | Y |
+| View Alerts | Y | Y | Y | Y |
+| Acknowledge Alert | Y | Y | Y | - |
+| Resolve Alert | Y | Y | - | - |
+| Manage Alert Rules | Y | Y | - | - |
+| Manage Services | Y | - | - | - |
+| View Audit Logs | Y | Y | - | - |
+
+---
+
+## Log Ingestion Flow
+
+### Via API (Direct)
+
+```bash
+# Single log
+curl -X POST http://localhost:8081/api/v1/telemetry/logs \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"level":"ERROR","message":"Connection timeout","timestamp":"2026-09-19T10:00:00Z"}'
+
+# Batch logs
+curl -X POST http://localhost:8081/api/v1/telemetry/logs/batch \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"logs":[{"level":"INFO","message":"Request processed","timestamp":"2026-09-19T10:00:01Z"}]}'
+```
+
+### Via Fluent Bit (Agent)
+
+Fluent Bit is pre-configured to tail `logs/*.log` and forward to the ingestion service:
+
+```bash
+# Append a log line (the agent picks it up automatically)
+echo '{"level":"ERROR","message":"Disk full","timestamp":"2026-09-19T12:00:00Z"}' >> logs/dummy_app.log
+```
+
+---
+
+## API Documentation
+
+OpenAPI specs are auto-generated by SpringDoc and available at:
+
+| Service | URL |
+|---|---|
+| **core-app** | http://localhost:8080/v3/api-docs |
+| **ingestion-service** | http://localhost:8081/v3/api-docs |
+| **Swagger UI (core)** | http://localhost:8080/swagger-ui.html |
+
+Merged platform spec: [docs/openapi/platform-openapi.yaml](docs/openapi/platform-openapi.yaml)
+
+---
+
+## Running Tests
+
+```bash
+# All unit + integration tests (requires Docker for Testcontainers)
+mvn clean test
+
+# Specific module
+mvn clean test -pl ingestion-service
+mvn clean test -pl core-app
+```
+
+> **Note:** Integration tests use Testcontainers to spin up PostgreSQL, Kafka, Redis, and Elasticsearch automatically.
+
+---
+
+## Project Structure
+
+```
+Observability_Platform/
+|-- platform-common/          # Shared DTOs and utilities
+|-- platform-db/              # Flyway migrations
+|-- ingestion-service/        # Log ingestion API
+|-- indexer-worker/           # Kafka to Elasticsearch indexer
+|-- analytics-engine/         # Alert rule evaluation
+|-- alert-consumer/           # Alert persistence
+|-- notification-dispatcher/  # Notification delivery
+|-- core-app/                 # Main API + WebSocket
+|-- frontend/                 # React dashboard
+|-- fluent-bit/               # Fluent Bit agent config
+|-- logs/                     # Log files mount (for Fluent Bit)
+|-- scripts/                  # Dev/test scripts
+|   |-- auth/                 # JWT and bcrypt generators
+|   |-- db/                   # SQL seed scripts
+|   |-- misc/                 # OpenAPI merge tools
+|   +-- test/                 # Load testing and chaos scripts
+|-- docs/                     # Documentation
+|   |-- openapi/              # Merged OpenAPI specs
+|   |-- SRS_v2.1_*.md         # Software Requirements Specification
+|   |-- SDD_v1.1_*.md         # Software Design Document
+|   +-- LLD_v1.1_*.md         # Low-Level Design
+|-- docker-compose.yml        # Infrastructure services
+|-- pom.xml                   # Maven parent POM
++-- run-all.ps1               # Quick-start script (Windows)
+```
+
+---
+
+## Key Design Decisions
+
+- **Event-Driven Architecture**: All inter-service communication goes through Kafka topics, ensuring loose coupling and horizontal scalability.
+- **Idempotent Processing**: Duplicate log events and alerts are handled gracefully via business-key deduplication.
+- **Dead Letter Queue (DLQ)**: Failed messages are routed to DLQ topics with retry tiers (1s, 5s, 30s) before final dead-lettering.
+- **Zero-Trust Ingestion**: Every log request is authenticated via API Key, rate-limited per service, and validated before entering Kafka.
+- **Real-time Dashboard**: STOMP over WebSocket pushes metrics, alerts, and service health updates to connected clients every 5 seconds.
+- **Audit Trail**: Every mutation (create, update, delete) is atomically logged with user, IP, action, and result status.
+
+---
+
+## License
+
+This project is for educational and portfolio purposes.
