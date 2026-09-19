@@ -68,8 +68,7 @@ public class StompAuthWebSocketIntegrationTest {
     void setUp() {
         TestSeeds.seedUserWithRole(jdbcTemplate, userRepository, passwordEncoder, VIEWER, "VIEWER");
         errorLatch = new CountDownLatch(1);
-        stompClient = new WebSocketStompClient(new SockJsClient(List.<Transport>of(
-                new WebSocketTransport(new StandardWebSocketClient()))));
+        stompClient = new WebSocketStompClient(new org.springframework.web.socket.client.standard.StandardWebSocketClient());
         stompClient.setMessageConverter(new MappingJackson2MessageConverter());
     }
 
@@ -82,7 +81,7 @@ public class StompAuthWebSocketIntegrationTest {
     }
 
     private String wsUrl() {
-        return "http://localhost:" + port + "/ws";
+        return "ws://localhost:" + port + "/ws";
     }
 
     private StompHeaders authHeaders(String jwt) {

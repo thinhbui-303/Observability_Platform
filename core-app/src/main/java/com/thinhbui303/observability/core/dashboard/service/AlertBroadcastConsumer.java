@@ -40,15 +40,22 @@ public class AlertBroadcastConsumer {
                    groupId = "${spring.kafka.consumer.group-id:dashboard-broadcast-group}",
                    containerFactory = "dashboardKafkaListenerContainerFactory")
     public void onAlert(ConsumerRecord<String, String> record, Acknowledgment acknowledgment) throws Exception {
-        CanonicalAlertEvent event = JSON.readValue(record.value(), CanonicalAlertEvent.class);
-        DashboardAlertPayload payload = new DashboardAlertPayload(
-                event.alertId(),
-                event.ruleId(),
-                event.serviceId(),
-                event.severity(),
-                event.condition(),
-                event.triggeredAt());
-        messagingTemplate.convertAndSend(TOPIC_ALERTS, payload);
-        acknowledgment.acknowledge(); // at-least-once: ack only after the broadcast send succeeds
+        log.info("AlertBroadcastConsumer received record: key={}, partition={}, offset={}", record.key(), record.partition(), record.offset());
+        try {
+            CanonicalAlertEvent event = JSON.readValue(record.value(), CanonicalAlertEvent.class);
+            DashboardAlertPayload payload = new DashboardAlertPayload(
+                    event.alertId(),
+                    event.ruleId(),
+                    event.serviceId(),
+                    event.severity(),
+                    event.condition(),
+                    event.triggeredAt());
+            messagingTemplate.convertAndSend(TOPIC_ALERTS, payload);
+            acknowledgment.acknowledge(); // at-least-once: ack only after the broadcast send succeeds
+            log.info("AlertBroadcastConsumer broadcasted alertId={}", event.alertId());
+        } catch (Exception e) {
+            log.error("AlertBroadcastConsumer failed to process record: {}", record.value(), e);
+            throw e;
+        }
     }
 }

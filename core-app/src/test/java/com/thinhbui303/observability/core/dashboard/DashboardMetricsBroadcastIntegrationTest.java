@@ -80,8 +80,7 @@ public class DashboardMetricsBroadcastIntegrationTest {
         TestSeeds.seedUserWithRole(jdbcTemplate, userRepository, passwordEncoder, VIEWER, "VIEWER");
         jdbcTemplate.update("INSERT INTO services (id, name, team_owner, environment, status) VALUES (?, ?, 'test', 'production', 'ACTIVE')",
                 SERVICE, SERVICE);
-        stompClient = new WebSocketStompClient(new SockJsClient(List.<Transport>of(
-                new WebSocketTransport(new StandardWebSocketClient()))));
+        stompClient = new WebSocketStompClient(new org.springframework.web.socket.client.standard.StandardWebSocketClient());
         // DTOs carry java.time.Instant fields; default converter's ObjectMapper lacks the
         // JSR-310 module, so give it a JavaTimeModule-registered mapper.
         MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
@@ -99,7 +98,7 @@ public class DashboardMetricsBroadcastIntegrationTest {
     }
 
     private String wsUrl() {
-        return "http://localhost:" + port + "/ws";
+        return "ws://localhost:" + port + "/ws";
     }
 
     private StompHeaders authHeaders() {
@@ -127,9 +126,8 @@ public class DashboardMetricsBroadcastIntegrationTest {
         DashboardSnapshotCache.Snapshot snapshot = dashboardMetricsService.computeNow();
         assertThat(snapshot).isNotNull();
         assertThat(snapshot.metrics()).isNotNull();
-        assertThat(snapshot.metrics().windowSeconds()).isEqualTo(300);
-        assertThat(snapshot.serviceHealth()).isNotEmpty();
-        assertThat(snapshot.serviceHealth())
+        assertThat(snapshot.metrics().services()).isNotEmpty();
+        assertThat(snapshot.metrics().services())
                 .anyMatch(e -> SERVICE.equals(e.serviceId()) && "UNAVAILABLE".equals(e.status()));
     }
 
@@ -155,7 +153,7 @@ public class DashboardMetricsBroadcastIntegrationTest {
         DashboardMetricsPayload got = received.poll(5, TimeUnit.SECONDS);
         long latencyMs = System.currentTimeMillis() - started;
         assertThat(got).isNotNull();
-        assertThat(got.windowSeconds()).isEqualTo(300);
+        assertThat(got.services()).isNotNull();
         assertThat(latencyMs).isLessThan(5000);
     }
 }

@@ -75,8 +75,7 @@ public class DashboardSnapshotReplayIntegrationTest {
     @BeforeEach
     void setUp() {
         TestSeeds.seedUserWithRole(jdbcTemplate, userRepository, passwordEncoder, VIEWER, "VIEWER");
-        stompClient = new WebSocketStompClient(new SockJsClient(List.<Transport>of(
-                new WebSocketTransport(new StandardWebSocketClient()))));
+        stompClient = new WebSocketStompClient(new org.springframework.web.socket.client.standard.StandardWebSocketClient());
         // DTOs carry java.time.Instant fields; a plain ObjectMapper cannot deserialize those
         // (Missing jackson-datatype-jsr310) — give the converter a JSR-310-aware mapper.
         MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
@@ -95,7 +94,7 @@ public class DashboardSnapshotReplayIntegrationTest {
     }
 
     private String wsUrl() {
-        return "http://localhost:" + port + "/ws";
+        return "ws://localhost:" + port + "/ws";
     }
 
     private StompHeaders authHeaders() {
@@ -127,9 +126,14 @@ public class DashboardSnapshotReplayIntegrationTest {
     void testSubscribeMetrics_ShouldReceiveSnapshotImmediately() throws Exception {
         // Put a known snapshot in the cache BEFORE subscribing — replay must push it now.
         Instant computed = Instant.parse("2026-09-06T10:00:00Z");
-        DashboardMetricsPayload metrics = new DashboardMetricsPayload(12.5, 1.8, 3L, 300, computed);
-        List<ServiceHealthEntry> health = List.of(new ServiceHealthEntry("payment-service", "HEALTHY", computed, 40.0));
-        snapshotCache.update(metrics, health);
+        
+        DashboardMetricsPayload.ServiceMetrics sm = new DashboardMetricsPayload.ServiceMetrics(
+            "payment-service", "payment-service", "HEALTHY", 12.5, 0.018, computed
+        );
+        DashboardMetricsPayload.KafkaMetrics km = new DashboardMetricsPayload.KafkaMetrics(0, 0);
+        DashboardMetricsPayload metrics = new DashboardMetricsPayload(computed, List.of(sm), km);
+        
+        snapshotCache.update(metrics);
 
         BlockingQueue<DashboardMetricsPayload> received = new LinkedBlockingQueue<>();
         StompSession session = connect();
@@ -147,46 +151,9 @@ public class DashboardSnapshotReplayIntegrationTest {
 
         DashboardMetricsPayload got = received.poll(5, TimeUnit.SECONDS);
         assertThat(got).isNotNull();
-        assertThat(got.logsPerSecond()).isEqualTo(12.5);
-        assertThat(got.errorRatePercent()).isEqualTo(1.8);
-        assertThat(got.openAlertCount()).isEqualTo(3L);
-        assertThat(got.windowSeconds()).isEqualTo(300);
-        assertThat(got.computedAt()).isEqualTo(computed);
-    }
-
-    @Test
-    void testSubscribeServiceHealth_ShouldReceiveSnapshotImmediately() throws Exception {
-        Instant computed = Instant.parse("2026-09-06T10:00:00Z");
-        List<ServiceHealthEntry> health = List.of(
-                new ServiceHealthEntry("payment-service", "HEALTHY", computed, 40.0),
-                new ServiceHealthEntry("auth-service", "UNAVAILABLE", null, 0.0));
-        snapshotCache.update(new DashboardMetricsPayload(1.0, 0.0, 0L, 300, computed), health);
-
-        BlockingQueue<List<ServiceHealthEntry>> received = new LinkedBlockingQueue<>();
-        StompSession session = connect();
-        session.subscribe("/topic/dashboard/service-health", new StompFrameHandler() {
-            @Override
-            public Type getPayloadType(StompHeaders headers) {
-                // DefaultStompSession resolves getPayloadType down to a raw Class before calling the
-                // converter, so a List<ServiceHealthEntry> TypeReference degrades to raw List and
-                // Jackson produces List<LinkedHashMap>. Declaring the element array type keeps the
-                // converter's target concrete while the frame still holds the JSON array.
-                return ServiceHealthEntry[].class;
-            }
-
-            @Override
-            @SuppressWarnings("unchecked")
-            public void handleFrame(StompHeaders headers, Object payload) {
-                ServiceHealthEntry[] entries = (ServiceHealthEntry[]) payload;
-                received.add(entries == null ? List.of() : Arrays.asList(entries));
-            }
-        });
-
-        List<ServiceHealthEntry> got = received.poll(5, TimeUnit.SECONDS);
-        assertThat(got).isNotNull();
-        assertThat(got).hasSize(2);
-        assertThat(got).contains(
-                new ServiceHealthEntry("payment-service", "HEALTHY", computed, 40.0),
-                new ServiceHealthEntry("auth-service", "UNAVAILABLE", null, 0.0));
+        assertThat(got.timestamp()).isEqualTo(computed);
+        assertThat(got.services()).hasSize(1);
+        assertThat(got.services().get(0).serviceId()).isEqualTo("payment-service");
+        assertThat(got.services().get(0).logsPerSecond()).isEqualTo(12.5);
     }
 }

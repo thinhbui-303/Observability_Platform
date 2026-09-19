@@ -1,10 +1,8 @@
 package com.thinhbui303.observability.core.dashboard.cache;
 
 import com.thinhbui303.observability.core.dashboard.dto.DashboardMetricsPayload;
-import com.thinhbui303.observability.core.dashboard.dto.ServiceHealthEntry;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -16,9 +14,14 @@ import java.util.concurrent.atomic.AtomicReference;
 public class DashboardSnapshotCache {
 
     private final AtomicReference<Snapshot> latest = new AtomicReference<>();
+    private final AtomicReference<SelfHealthSnapshot> latestSelfHealth = new AtomicReference<>();
 
-    public void update(DashboardMetricsPayload metrics, List<ServiceHealthEntry> serviceHealth) {
-        latest.set(new Snapshot(metrics, List.copyOf(serviceHealth)));
+    public void update(DashboardMetricsPayload metrics) {
+        latest.set(new Snapshot(metrics));
+    }
+
+    public void updateSelfHealth(com.thinhbui303.observability.core.dashboard.dto.SelfHealthPayload payload) {
+        latestSelfHealth.set(new SelfHealthSnapshot(payload));
     }
 
     /** @return current snapshot, or null before the first @Scheduled tick. */
@@ -26,5 +29,10 @@ public class DashboardSnapshotCache {
         return latest.get();
     }
 
-    public record Snapshot(DashboardMetricsPayload metrics, List<ServiceHealthEntry> serviceHealth) {}
+    public SelfHealthSnapshot currentSelfHealthSnapshot() {
+        return latestSelfHealth.get();
+    }
+
+    public record Snapshot(DashboardMetricsPayload metrics) {}
+    public record SelfHealthSnapshot(com.thinhbui303.observability.core.dashboard.dto.SelfHealthPayload payload) {}
 }

@@ -34,6 +34,7 @@ public class DashboardSnapshotReplayListener {
 
     private static final String TOPIC_METRICS = "/topic/dashboard/metrics";
     private static final String TOPIC_HEALTH = "/topic/dashboard/service-health";
+    private static final String TOPIC_SELF_HEALTH = "/topic/dashboard/self-health";
     private static final Duration REPLAY_DELAY = Duration.ofMillis(500);
 
     private final SimpMessagingTemplate messagingTemplate;
@@ -56,10 +57,6 @@ public class DashboardSnapshotReplayListener {
             return;
         }
         String destination = accessor.getDestination();
-        DashboardSnapshotCache.Snapshot snapshot = snapshotCache.currentSnapshot();
-        if (snapshot == null) {
-            return; // nothing computed yet; the periodic broadcast will deliver asap
-        }
         // Session-scoped MESSAGE: the simpSessionId header makes the broker deliver only to
         // this session's own subscription on the destination (client-specific, NOT a fan-out).
         SimpMessageHeaderAccessor outbound = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
@@ -70,11 +67,15 @@ public class DashboardSnapshotReplayListener {
         Object payload;
         String topic;
         if (TOPIC_METRICS.equals(destination)) {
+            DashboardSnapshotCache.Snapshot snapshot = snapshotCache.currentSnapshot();
+            if (snapshot == null) return;
             topic = TOPIC_METRICS;
             payload = snapshot.metrics();
-        } else if (TOPIC_HEALTH.equals(destination)) {
-            topic = TOPIC_HEALTH;
-            payload = snapshot.serviceHealth();
+        } else if (TOPIC_SELF_HEALTH.equals(destination)) {
+            DashboardSnapshotCache.SelfHealthSnapshot shSnapshot = snapshotCache.currentSelfHealthSnapshot();
+            if (shSnapshot == null) return;
+            topic = TOPIC_SELF_HEALTH;
+            payload = shSnapshot.payload();
         } else {
             return;
         }

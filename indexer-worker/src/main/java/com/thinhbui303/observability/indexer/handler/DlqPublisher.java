@@ -49,4 +49,30 @@ public class DlqPublisher {
             throw new RuntimeException("Failed to publish to DLQ", e);
         }
     }
+
+    public void publishRaw(String rawPayload, String messageKey, 
+                           String originalTopic, int originalPartition, long originalOffset,
+                           String errorType, String errorMessage, long firstFailedAt) {
+        
+        ProducerRecord<String, Object> record = new ProducerRecord<>(TOPIC_DLQ, messageKey, rawPayload);
+        
+        record.headers().add(RetryPublisher.HEADER_ORIGINAL_TOPIC, originalTopic.getBytes(StandardCharsets.UTF_8));
+        record.headers().add(RetryPublisher.HEADER_ORIGINAL_PARTITION, String.valueOf(originalPartition).getBytes(StandardCharsets.UTF_8));
+        record.headers().add(RetryPublisher.HEADER_ORIGINAL_OFFSET, String.valueOf(originalOffset).getBytes(StandardCharsets.UTF_8));
+        record.headers().add(RetryPublisher.HEADER_RETRY_COUNT, "0".getBytes(StandardCharsets.UTF_8));
+        record.headers().add(RetryPublisher.HEADER_ERROR_TYPE, errorType.getBytes(StandardCharsets.UTF_8));
+        record.headers().add(RetryPublisher.HEADER_ERROR_MESSAGE, errorMessage.getBytes(StandardCharsets.UTF_8));
+        record.headers().add(RetryPublisher.HEADER_FIRST_FAILED_AT, String.valueOf(firstFailedAt).getBytes(StandardCharsets.UTF_8));
+
+        try {
+            kafkaTemplate.send(record).get();
+            log.info("Successfully published RAW payload to DLQ: key={}", messageKey);
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Failed to publish RAW to DLQ for key: {}", messageKey, e);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new RuntimeException("Failed to publish to DLQ", e);
+        }
+    }
 }

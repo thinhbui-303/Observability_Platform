@@ -26,6 +26,18 @@ public class ItemResultHandler {
         this.retryPolicy = retryPolicy;
     }
 
+    public DlqPublisher getDlqPublisher() {
+        return dlqPublisher;
+    }
+
+    public RetryPublisher getRetryPublisher() {
+        return retryPublisher;
+    }
+
+    public RetryPolicy getRetryPolicy() {
+        return retryPolicy;
+    }
+
     public void handleBulkResult(List<BulkResponseItem> items, List<CanonicalLogEvent> originalEvents, 
                                  String originalTopic, int originalPartition, long originalOffsetBase,
                                  int currentRetryCount, long firstFailedAt) {

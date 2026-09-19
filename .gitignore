@@ -41,3 +41,21 @@ build/
 .DS_Store
 Thumbs.db
 *.zip
+
+### Node (root-level scripts) ###
+node_modules/
+package-lock.json
+
+### AI Tool Directories ###
+.superpowers/
+.agents/
+.gemini/
+.cursorrules
+
+### Fluent Bit Runtime ###
+logs/*.log
+
+### Temp spec files at root ###
+/core.json
+/ingestion.json
+/ingestion.yaml

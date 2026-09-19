@@ -8,6 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    mem_limit: 256m
     ports:
       - "5432:5432"
     volumes:
@@ -21,6 +22,7 @@ services:
   redis:
     image: redis:7
     container_name: obs_redis
+    mem_limit: 128m
     ports:
       - "6379:6379"
     volumes:
@@ -46,7 +48,9 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JVM_PERFORMANCE_OPTS: "-Xms256m -Xmx256m"
       CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+    mem_limit: 512m
     ports:
       - "9092:9092"
     volumes:
@@ -66,7 +70,8 @@ services:
       - xpack.security.enabled=false
       - xpack.security.enrollment.enabled=false
       - xpack.security.http.ssl.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    mem_limit: 768m
     ports:
       - "9200:9200"
     volumes:
@@ -82,11 +87,25 @@ services:
     container_name: obs_kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - NODE_OPTIONS=--max-old-space-size=1024
+    mem_limit: 1g
     ports:
       - "5601:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
+
+  fluent-bit:
+    image: fluent/fluent-bit:3.1
+    container_name: obs_fluent_bit
+    environment:
+      - FLUENTBIT_API_KEY=${FLUENTBIT_API_KEY}
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
+      - ./logs:/var/log/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

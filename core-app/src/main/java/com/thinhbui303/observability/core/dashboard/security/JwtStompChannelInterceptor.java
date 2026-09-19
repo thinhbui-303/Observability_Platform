@@ -43,6 +43,26 @@ public class JwtStompChannelInterceptor implements ChannelInterceptor {
                 return reject(accessor, "Invalid or expired JWT on STOMP CONNECT");
             }
             accessor.setUser(() -> tokenProvider.getUsernameFromJWT(token));
+            if (accessor.getSessionAttributes() != null) {
+                accessor.getSessionAttributes().put("jwt", token);
+            }
+        } else if (accessor.getCommand() == StompCommand.SUBSCRIBE) {
+            String destination = accessor.getDestination();
+            if ("/topic/dashboard/self-health".equals(destination)) {
+                String token = null;
+                if (accessor.getSessionAttributes() != null) {
+                    token = (String) accessor.getSessionAttributes().get("jwt");
+                }
+                if (token == null) {
+                    log.warn("STOMP SUBSCRIBE rejected: no JWT found in session for self-health");
+                    return reject(accessor, "Unauthorized: missing JWT in session");
+                }
+                java.util.List<String> roles = tokenProvider.getRolesFromJWT(token);
+                if (roles == null || !roles.contains("ADMIN")) {
+                    log.warn("STOMP SUBSCRIBE rejected: user is not ADMIN for self-health");
+                    return reject(accessor, "Forbidden: requires ADMIN role");
+                }
+            }
         }
         return message;
     }

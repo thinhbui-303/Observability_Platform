@@ -1,11 +1,24 @@
 package com.thinhbui303.observability.core.dashboard.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 public record DashboardMetricsPayload(
-        double logsPerSecond,
-        double errorRatePercent,
-        long openAlertCount,
-        int windowSeconds,
-        Instant computedAt
-) {}
+        Instant timestamp,
+        List<ServiceMetrics> services,
+        KafkaMetrics kafka
+) {
+    public record ServiceMetrics(
+            String serviceId,
+            String serviceName,
+            String status,
+            double logsPerSecond,
+            double errorRate,
+            Instant lastSeen
+    ) {}
+
+    public record KafkaMetrics(
+            long indexerLag,
+            long analyticsLag
+    ) {}
+}

@@ -90,8 +90,7 @@ public class AlertBroadcastIntegrationTest {
     @BeforeEach
     void setUp() {
         TestSeeds.seedUserWithRole(jdbcTemplate, userRepository, passwordEncoder, VIEWER, "VIEWER");
-        stompClient = new WebSocketStompClient(new SockJsClient(List.<Transport>of(
-                new WebSocketTransport(new StandardWebSocketClient()))));
+        stompClient = new WebSocketStompClient(new org.springframework.web.socket.client.standard.StandardWebSocketClient());
         // DTOs carry java.time.Instant fields; default converter's ObjectMapper lacks the
         // JSR-310 module, so give it a JavaTimeModule-registered mapper.
         MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
@@ -126,7 +125,7 @@ public class AlertBroadcastIntegrationTest {
     }
 
     private String wsUrl() {
-        return "http://localhost:" + port + "/ws";
+        return "ws://localhost:" + port + "/ws";
     }
 
     private StompHeaders authHeaders() {
@@ -164,9 +163,8 @@ public class AlertBroadcastIntegrationTest {
             }
         });
 
-        // STOMP SUBSCRIBE registration over SockJS/inboundChannel is asynchronous.
-        // Wait briefly for broker subscription mapping to become active (mirrors ReplayListener 500ms delay).
-        Thread.sleep(1000);
+        // Give server time to register STOMP subscription
+        Thread.sleep(500);
 
         // Wait for Kafka consumer to be fully assigned before producing.
         awaitKafkaConsumerReady();

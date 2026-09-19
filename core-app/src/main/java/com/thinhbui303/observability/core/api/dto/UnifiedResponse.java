@@ -1,15 +1,26 @@
 package com.thinhbui303.observability.core.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.List;
+import java.util.Map;
+
+@Schema(description = "Unified envelope response format for all API calls")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UnifiedResponse<T> {
+    @Schema(description = "Status code of the response (e.g., SUCCESS, VALIDATION_ERROR, NOT_FOUND)", example = "SUCCESS")
     private String code;
+    @Schema(description = "The main response data payload")
     private T data;
+    @Schema(description = "Message providing more context, usually on errors")
     private String message;
+    @Schema(description = "Timestamp of the response (ISO-8601)", example = "2026-09-08T10:15:30Z")
     private String timestamp;
+    @Schema(description = "API path that was called", example = "/api/v1/services")
     private String path;
-    private java.util.List<java.util.Map<String, String>> fieldErrors;
+    @Schema(description = "List of validation errors if status is VALIDATION_ERROR")
+    private List<Map<String, String>> fieldErrors;
 
     public UnifiedResponse(String code, T data) {
         this.code = code;

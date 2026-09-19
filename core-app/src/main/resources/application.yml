@@ -11,6 +11,10 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     consumer:
@@ -25,3 +29,22 @@ app:
     health-unavailable-after-ms: 120000   # 4.9.1: lastSeen >= 2min -> UNAVAILABLE (eval FIRST)
     health-degraded-after-ms: 30000       # 4.9.1: lastSeen >= 30s OR errorRate >= 5% -> DEGRADED
     health-error-rate-threshold: 0.05     # 4.9.1: >= 5% error rate -> DEGRADED
+
+jwt:
+  secret: ${JWT_SECRET:dGhpcy1pcy1hLXZlcnktc2VjdXJlLWFuZC1sb25nLXNlY3JldC1rZXktdGhhdC1pcy1hdC1sZWFzdC0yNTYtYml0cw==}
+  expiration-ms: 3600000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus, metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.99, 0.95, 0.5

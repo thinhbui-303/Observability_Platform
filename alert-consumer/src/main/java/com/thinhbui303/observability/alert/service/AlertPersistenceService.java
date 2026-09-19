@@ -41,7 +41,7 @@ public class AlertPersistenceService {
 
     private static final String INCREMENT_OCCURRENCE =
             "UPDATE alerts SET occurrence_count = occurrence_count + 1 " +
-            "WHERE rule_id = ? AND service_id = ? AND environment = ? AND window_start = ?";
+            "WHERE rule_id = ? AND service_id = ? AND environment = ? AND status IN ('TRIGGERED', 'ACKNOWLEDGED')";
 
     // JdbcTemplate's positional-arg binder cannot infer an SQL type for java.time.Instant.
     private static Timestamp toTimestamp(Instant instant) {
@@ -82,10 +82,9 @@ public class AlertPersistenceService {
                 // THIS transaction; then bump occurrence_count on the existing business-key row.
                 connection.rollback(savepoint);
                 int updated = jdbcTemplate.update(INCREMENT_OCCURRENCE,
-                        a.getRuleId(), a.getServiceId(), a.getEnvironment(),
-                        Timestamp.from(a.getWindowStart()));
-                log.info("Business-key duplicate for rule {} service {} env {} window {} -> occurrence_count incremented ({} rows)",
-                        a.getRuleId(), a.getServiceId(), a.getEnvironment(), a.getWindowStart(), updated);
+                        a.getRuleId(), a.getServiceId(), a.getEnvironment());
+                log.info("Business-key duplicate for rule {} service {} env {} -> occurrence_count incremented ({} rows)",
+                        a.getRuleId(), a.getServiceId(), a.getEnvironment(), updated);
                 return;
             }
             if (rows == 0) {

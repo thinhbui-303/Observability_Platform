@@ -55,12 +55,61 @@ public class IndexTemplateManager {
                     .template(t -> t.mappings(m -> m.withJson(new StringReader(mappingJson))))
             );
 
-            // 2. Index template matching logs-*
+            // 2. Create ILM Policy
+            String ilmJson = """
+                    {
+                      "phases": {
+                        "hot": {
+                          "min_age": "0ms",
+                          "actions": {
+                            "set_priority": { "priority": 100 }
+                          }
+                        },
+                        "warm": {
+                          "min_age": "4d",
+                          "actions": {
+                            "readonly": {},
+                            "set_priority": { "priority": 50 }
+                          }
+                        },
+                        "cold": {
+                          "min_age": "31d",
+                          "actions": {
+                            "set_priority": { "priority": 0 }
+                          }
+                        },
+                        "delete": {
+                          "min_age": "90d",
+                          "actions": {
+                            "delete": {}
+                          }
+                        }
+                      }
+                    }
+                    """;
+
+            elasticsearchClient.ilm().putLifecycle(l -> l
+                    .name("logs-ilm-policy")
+                    .policy(p -> p.withJson(new StringReader(ilmJson)))
+            );
+
+            // 3. Index template matching logs-* (with ILM settings)
+            String templateSettingsJson = """
+                    {
+                      "index": {
+                        "lifecycle": {
+                          "name": "logs-ilm-policy"
+                        }
+                      }
+                    }
+                    """;
+
             elasticsearchClient.indices().putIndexTemplate(i -> i
                     .name("obs-logs-template")
                     .indexPatterns("logs-*")
                     .composedOf("obs-logs-mappings")
                     .priority(200) // Give it higher priority than default ES templates (which is 100)
+                    .template(t -> t.settings(s -> s.withJson(new StringReader(templateSettingsJson))))
             );
 
             log.info("Elasticsearch templates initialized successfully.");

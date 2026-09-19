@@ -4,6 +4,11 @@ import com.thinhbui303.observability.core.api.dto.JwtResponse;
 import com.thinhbui303.observability.core.api.dto.LoginRequest;
 import com.thinhbui303.observability.core.api.dto.UnifiedResponse;
 import com.thinhbui303.observability.core.security.JwtTokenProvider;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -17,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth")
+@Tag(name = "Authentication", description = "Endpoints for user authentication")
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;
@@ -31,6 +37,11 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @Operation(summary = "Authenticate user and get JWT", description = "Authenticates a user by username and password. Returns a JWT for API authorization.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Authentication successful"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid username or password", content = @Content(schema = @Schema(implementation = UnifiedResponse.class)))
+    })
     public ResponseEntity<UnifiedResponse<JwtResponse>> authenticateUser(@RequestBody LoginRequest loginRequest) {
 
         Authentication authentication = authenticationManager.authenticate(

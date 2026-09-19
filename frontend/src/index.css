@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Using Dark Green as background and Yellow as primary, matching LoginPage */
+    --background: 147 25% 6%; /* #0a100b */
+    --foreground: 60 10% 95%; 
+    --card: 147 20% 9%; /* #0f1411 */
+    --card-foreground: 60 10% 95%;
+    --popover: 147 20% 9%;
+    --popover-foreground: 60 10% 95%;
+    
+    /* The bright neon yellow accent */
+    --primary: 51 100% 50%; /* #FFD800 */
+    --primary-foreground: 0 0% 0%; 
+    
+    /* Slightly lighter green for secondary elements */
+    --secondary: 147 15% 15%; 
+    --secondary-foreground: 60 10% 95%;
+    
+    --muted: 147 15% 15%;
+    --muted-foreground: 147 10% 60%;
+    
+    --accent: 51 100% 50%;
+    --accent-foreground: 0 0% 0%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Glowing borders or subtle dark borders */
+    --border: 147 15% 20%;
+    --input: 147 15% 20%;
+    --ring: 51 100% 50%;
+    --radius: 0.75rem;
+  }
+
+  /* Force dark mode globally to match the aesthetic */
+  .dark {
+    --background: 147 25% 6%; 
+    --foreground: 60 10% 95%; 
+    --card: 147 20% 9%; 
+    --card-foreground: 60 10% 95%;
+    --popover: 147 20% 9%;
+    --popover-foreground: 60 10% 95%;
+    --primary: 51 100% 50%; 
+    --primary-foreground: 0 0% 0%; 
+    --secondary: 147 15% 15%; 
+    --secondary-foreground: 60 10% 95%;
+    --muted: 147 15% 15%;
+    --muted-foreground: 147 10% 60%;
+    --accent: 51 100% 50%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 147 15% 20%;
+    --input: 147 15% 20%;
+    --ring: 51 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    background-image: radial-gradient(circle at 10% 20%, rgba(255, 216, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(255, 216, 0, 0.03) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+}
+
+/* Custom Anime-style Glassmorphism utility */
+.glass-panel {
+  @apply bg-[#0f1411]/80 backdrop-blur-md border border-[#232f28] shadow-[0_8px_32px_0_rgba(0,0,0,0.3)];
+}
+
+/* Subtle glowing text */
+.text-glow {
+  text-shadow: 0 0 10px rgba(255, 216, 0, 0.5);
+}

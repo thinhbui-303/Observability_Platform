@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thinhbui303.observability.common.CanonicalLogEvent;
 import com.thinhbui303.observability.indexer.es.ElasticsearchBulkIndexer;
 import com.thinhbui303.observability.indexer.handler.ItemResultHandler;
+import com.thinhbui303.observability.indexer.handler.RetryPublisher;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,8 +59,13 @@ public class BatchLogProcessor {
                 events.add(event);
             } catch (JsonProcessingException e) {
                 log.error("Failed to parse log event from Kafka record at offset {}", record.offset(), e);
-                // In a robust system, we might push parsing errors to DLQ directly.
-                // For simplicity here, we skip.
+                // Push parsing errors to DLQ directly.
+                String messageKey = record.key() != null ? record.key() : "unknown-key";
+                itemResultHandler.getDlqPublisher().publishRaw(
+                        record.value(), messageKey,
+                        originalTopic, originalPartition, record.offset(),
+                        "PARSE_ERROR", e.getMessage(), System.currentTimeMillis()
+                );
             }
         }
 
@@ -71,17 +77,36 @@ public class BatchLogProcessor {
                         originalTopic, originalPartition, originalOffsetBase, 
                         0, 0L);
             }
-        } catch (IOException e) {
-            log.error("Network error communicating with Elasticsearch", e);
-            // ENTIRE BATCH FAILED without partial response -> Treat as retryable for ALL
-            // Simulate 503 for all
+        } catch (IOException | co.elastic.clients.elasticsearch._types.ElasticsearchException e) {
+            log.error("Error communicating with Elasticsearch", e);
+            // ENTIRE BATCH FAILED without partial response -> Route to retry topics
             for (int i = 0; i < events.size(); i++) {
-                // We use handleBulkResult logic or manually send all to retry.
-                // For this project, we can just throw RuntimeException so Kafka retries the whole batch
-                // OR we route to retry topics. A true robust implementation routes to retry.
-                // We will throw to let spring-kafka re-poll or block if we don't handle it, 
-                // but since we must adhere to retry topics, let's just let it bubble up, or manually send.
-                throw new RuntimeException("Elasticsearch cluster unavailable", e);
+                CanonicalLogEvent event = events.get(i);
+                ConsumerRecord<String, String> originalRecord = records.get(i);
+                String messageKey = originalRecord.key() != null ? originalRecord.key() : event.eventId();
+                
+                int currentRetryCount = 0;
+                if (originalRecord.headers().lastHeader(RetryPublisher.HEADER_RETRY_COUNT) != null) {
+                    currentRetryCount = Integer.parseInt(new String(originalRecord.headers().lastHeader(RetryPublisher.HEADER_RETRY_COUNT).value()));
+                }
+                long firstFailedAt = System.currentTimeMillis();
+                if (originalRecord.headers().lastHeader(RetryPublisher.HEADER_FIRST_FAILED_AT) != null) {
+                    firstFailedAt = Long.parseLong(new String(originalRecord.headers().lastHeader(RetryPublisher.HEADER_FIRST_FAILED_AT).value()));
+                }
+                
+                // Use RetryPublisher to route it to the next retry topic (or DLQ if max retries exceeded)
+                String nextTopic = itemResultHandler.getRetryPolicy().getNextRetryTopic(currentRetryCount);
+                if (nextTopic != null) {
+                    itemResultHandler.getRetryPublisher().publish(
+                            nextTopic, event, originalTopic, originalPartition, originalRecord.offset(),
+                            currentRetryCount + 1, "CLUSTER_UNAVAILABLE", e.getMessage(), firstFailedAt
+                    );
+                } else {
+                    itemResultHandler.getDlqPublisher().publish(
+                            event, originalTopic, originalPartition, originalRecord.offset(),
+                            currentRetryCount, "CLUSTER_UNAVAILABLE", e.getMessage(), firstFailedAt
+                    );
+                }
             }
         }
 

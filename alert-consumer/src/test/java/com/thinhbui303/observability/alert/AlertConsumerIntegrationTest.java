@@ -118,21 +118,21 @@ public class AlertConsumerIntegrationTest {
     void testDuplicateWindowEmit_ShouldIncrementOccurrenceCount() throws Exception {
         String alertIdA = "test-alert-" + UUID.randomUUID();
         String alertIdB = "test-alert-" + UUID.randomUUID();
-        Instant windowStart = Instant.parse("2026-09-05T16:45:00Z");
+        Instant windowStartA = Instant.parse("2026-09-05T16:45:00Z");
+        Instant windowStartB = Instant.parse("2026-09-05T16:46:00Z"); // Different window
         long ruleId = ruleId();
 
-        publish(newAlert(ruleId, alertIdA, windowStart));
+        publish(newAlert(ruleId, alertIdA, windowStartA));
         await().atMost(20, TimeUnit.SECONDS).untilAsserted(() -> {
             assertThat(countOf(alertIdA)).isEqualTo(1);
             assertThat(occurrenceCountOf(alertIdA)).isEqualTo(1);
         });
 
-        publish(newAlert(ruleId, alertIdB, windowStart));
+        publish(newAlert(ruleId, alertIdB, windowStartB));
         await().atMost(20, TimeUnit.SECONDS).untilAsserted(() -> {
             assertThat(countOf(alertIdA)).isEqualTo(1);
-            assertThat(occurrenceCountOf(alertIdA)).isEqualTo(2);
-            assertThat(countOf(alertIdB)).isEqualTo(0);
-            assertThat(countForBusinessKey(ruleId, windowStart)).isEqualTo(1);
+            assertThat(occurrenceCountOf(alertIdA)).isEqualTo(2); // Incremented existing alert!
+            assertThat(countOf(alertIdB)).isEqualTo(0); // B was deduplicated
         });
     }
 

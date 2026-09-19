@@ -54,7 +54,13 @@ public class LogSearchService {
         }
 
         if (queryStr != null && !queryStr.isEmpty()) {
-            boolQuery.must(q -> q.match(m -> m.field("message").query(queryStr)));
+            // Add wildcards for partial matching if not already present
+            String finalQueryStr = queryStr;
+            if (!queryStr.contains("*") && !queryStr.contains(" AND ") && !queryStr.contains(" OR ")) {
+                finalQueryStr = "*" + queryStr + "*";
+            }
+            final String qs = finalQueryStr;
+            boolQuery.must(q -> q.queryString(qsb -> qsb.fields("message").query(qs)));
         }
 
         Query query = boolQuery.build()._toQuery();
@@ -67,9 +73,16 @@ public class LogSearchService {
         SearchRequest.Builder searchRequestBuilder = new SearchRequest.Builder()
                 .index("logs-*")
                 .query(query)
-                .size(finalSize)
-                .sort(s -> s.field(f -> f.field("timestamp").order(timestampSortOrder)))
-                .sort(s -> s.field(f -> f.field("eventId").order(SortOrder.Asc))); // tiebreaker
+                .size(finalSize);
+                
+        // If a search query is provided, sort by relevance (score) first so best matches appear at the top
+        if (queryStr != null && !queryStr.isEmpty()) {
+            searchRequestBuilder.sort(s -> s.score(sc -> sc));
+            searchRequestBuilder.sort(s -> s.field(f -> f.field("timestamp").order(SortOrder.Desc)));
+        } else {
+            searchRequestBuilder.sort(s -> s.field(f -> f.field("timestamp").order(timestampSortOrder)));
+            searchRequestBuilder.sort(s -> s.field(f -> f.field("eventId").order(SortOrder.Asc))); // tiebreaker
+        }
 
         boolean isPageMode = (searchAfter == null);
         
@@ -97,7 +110,7 @@ public class LogSearchService {
             content.add(hit.source());
             if (hit.sort() != null) {
                 lastSortValues = hit.sort().stream()
-                        .map(fv -> fv._get().toString())
+                        .map(fv -> fv != null && fv._get() != null ? fv._get().toString() : null)
                         .collect(Collectors.toList());
             }
         }

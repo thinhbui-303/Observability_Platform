@@ -158,3 +158,12 @@ Hai module độc lập (`alert-consumer` và `core-app`) đều map lên bảng
 ### 2. Client Reconnect & Caching
 
 Hệ thống lưu giữ một in-memory snapshot (`AtomicReference`) chứa dữ liệu metrics và service-health mới nhất. Khi một STOMP client vừa gửi lệnh `SUBSCRIBE`, server sẽ lập tức đẩy snapshot này về cho **riêng session đó**, giúp client thấy ngay dữ liệu mà không cần phải chờ đến chu kỳ broadcast (5s) kế tiếp.
+
+### 3. STOMP Endpoints v� Topics
+- **Endpoint k?t n?i**: /ws (S? d?ng chu?n STOMP over WebSocket)
+- **Co ch? x�c th?c**: B?t bu?c g?i JWT token trong header Authorization khi g?i STOMP CONNECT frame.
+- **Danh s�ch Topics (Subscribe)**:
+  - /topic/dashboard/alerts: Nh?n d? li?u real-time khi c� alert m?i du?c ph�t (t? AlertBroadcastConsumer).
+  - /topic/dashboard/metrics: Nh?n b?n tin t?ng h?p Logs/sec v� Error Rate (d?nh k? 5s).
+  - /topic/dashboard/service-health: Nh?n tr?ng th�i health c?a c�c service (UNAVAILABLE, DEGRADED, HEALTHY).
+

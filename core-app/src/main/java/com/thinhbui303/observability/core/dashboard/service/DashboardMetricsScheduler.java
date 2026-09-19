@@ -13,15 +13,19 @@ public class DashboardMetricsScheduler {
     private static final Logger log = LoggerFactory.getLogger(DashboardMetricsScheduler.class);
     private static final String TOPIC_METRICS = "/topic/dashboard/metrics";
     private static final String TOPIC_HEALTH = "/topic/dashboard/service-health";
+    private static final String TOPIC_SELF_HEALTH = "/topic/dashboard/self-health";
 
     private final DashboardMetricsService metricsService;
+    private final SelfHealthService selfHealthService;
     private final DashboardSnapshotCache snapshotCache;
     private final SimpMessagingTemplate messagingTemplate;
 
     public DashboardMetricsScheduler(DashboardMetricsService metricsService,
+                                     SelfHealthService selfHealthService,
                                      DashboardSnapshotCache snapshotCache,
                                      SimpMessagingTemplate messagingTemplate) {
         this.metricsService = metricsService;
+        this.selfHealthService = selfHealthService;
         this.snapshotCache = snapshotCache;
         this.messagingTemplate = messagingTemplate;
     }
@@ -30,11 +34,18 @@ public class DashboardMetricsScheduler {
     public void broadcastDashboardTick() {
         try {
             DashboardSnapshotCache.Snapshot snapshot = metricsService.computeNow();
-            snapshotCache.update(snapshot.metrics(), snapshot.serviceHealth());
+            snapshotCache.update(snapshot.metrics());
             messagingTemplate.convertAndSend(TOPIC_METRICS, snapshot.metrics());
-            messagingTemplate.convertAndSend(TOPIC_HEALTH, snapshot.serviceHealth());
         } catch (RuntimeException e) {
             log.error("Dashboard tick failed (broadcast skipped this round)", e);
+        }
+
+        try {
+            DashboardSnapshotCache.SelfHealthSnapshot selfHealthSnapshot = selfHealthService.computeNow();
+            snapshotCache.updateSelfHealth(selfHealthSnapshot.payload());
+            messagingTemplate.convertAndSend(TOPIC_SELF_HEALTH, selfHealthSnapshot.payload());
+        } catch (RuntimeException e) {
+            log.error("Self-health tick failed (broadcast skipped this round)", e);
         }
     }
 }

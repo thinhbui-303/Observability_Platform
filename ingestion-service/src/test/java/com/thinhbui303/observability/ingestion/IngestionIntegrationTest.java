@@ -94,8 +94,10 @@ class IngestionIntegrationTest {
         org.mockito.Mockito.reset(rateLimiter);
 
         if (!dbInitialized) {
+            jdbcTemplate.update("DELETE FROM alert_rules WHERE service_id = ?", "test-service");
             jdbcTemplate.update("DELETE FROM service_api_keys WHERE service_id = ?", "test-service");
             jdbcTemplate.update("DELETE FROM services WHERE id = ?", "test-service");
+            jdbcTemplate.update("DELETE FROM alert_rules WHERE service_id = ?", "test-disabled-service");
             jdbcTemplate.update("DELETE FROM service_api_keys WHERE service_id = ?", "test-disabled-service");
             jdbcTemplate.update("DELETE FROM services WHERE id = ?", "test-disabled-service");
 
